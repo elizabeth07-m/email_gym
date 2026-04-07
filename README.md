@@ -1,280 +1,379 @@
-# Message Routing Gym
-
-We gave a tiny language model an inbox full of operational alerts, scheduling conflicts,
-and stakeholder demands — and zero knowledge of what any of it meant. No routing rules.
-No few-shot examples. Just a wall of unstructured text and a directive.
-
-Within 12 episodes, it learned to tell a VP's critical-path request apart from a vendor
-webinar invite. By episode 6, it was responding to DevOps with the correct deployment
-window — *15:00*, not 14:00 — because it had learned to read the database maintenance
-alert buried three messages away.
-
-This is Message Routing Gym — an environment where an RL agent learns to triage,
-route, and respond to operational messages through adversarial curricula and GRPO.
-
-**Built with [OpenEnv v0.2.1](https://github.com/meta-pytorch/OpenEnv/tree/v0.2.1) ·
-Deployed on [HF Spaces](https://huggingface.co/spaces/elizabeth07-m/email_gym) ·
-Fine-tuned via [HF TRL](https://github.com/huggingface/trl) with GRPO**
-
+---
+title: Email Gym
+emoji: 📨
+colorFrom: blue
+colorTo: cyan
+sdk: docker
+app_port: 8000
+tags:
+  - openenv
+  - reinforcement-learning
+  - message-routing
+  - llm
+  - grpo
+  - pytorch
+  - meta
+pinned: false
+short_description: OpenEnv RL env for automated message triage and routing
 ---
 
-## Act 1: The Cold Start
+# 📨 Email Gym
 
-Episode 1. The agent receives its first directive:
-*"Route promotional broadcasts to 'promotions'. Route operational mail to 'operations'."*
+An OpenEnv environment where AI agents learn to triage, route, and respond to operational messages through adversarial curricula and GRPO fine-tuning. Built for the Meta × OpenEnv × Hugging Face × PyTorch Hackathon.
 
-It sees four messages: a build alert, a discount offer, a CTO architecture review, a
-"trial expiring" nag. It routes the CTO message to `promotions`. The monitoring alert
-goes to `management`. Everything is wrong. Reward: **−1.8**.
+## 🎯 Why This Matters
 
-The environment doesn't explain the mistake. It just reflects the grade back as a
-reward signal: 0.0%.
+Operational message overload — routing alerts to the wrong team, missing critical VP requests, responding to vendor spam — costs engineering teams hours every week. This environment trains RL agents to be automated message triage specialists, a task humans perform manually every day across DevOps, executive assistants, and operations roles.
 
-## Act 2: First Light
+Real-world utility: Operations teams, executive assistants, and DevOps engineers manually triage hundreds of messages daily across Slack, email, and ticketing systems. This environment provides a standardised benchmark for training and evaluating agents that automate this process with verifiable, graded outcomes.
 
-Episode 7. The pattern clicks. The agent notices that messages from `marketing@vendor.com`
-and `sales@tooling.io` share the same low-priority `alert_level`. It routes them both
-to `promotions`. Reward: **+1.2**.
-
-By episode 12, Task 1 is averaging **94% grade**. The curriculum escalates.
-
-## Act 3: The Environment Fights Back
-
-Tier 2. A VP Engineering message arrives buried under automated metric digests:
-*"Confirm you have seen the updated Q2 timeline before the 3 PM standup."*
-
-The agent must not just route it — it must *respond* with an acknowledgment. And the
-acknowledgment must be polite, relevant, and contain the right concepts. A semantic
-grader evaluates the response text. A content-free "ok" scores 0.15. A professional
-acknowledgment scores 0.85. The agent learns the difference in 8 episodes.
-
-## Act 4: Conflicting Signals
-
-Tier 3. Three messages arrive simultaneously:
-- DevOps: "Can we push the v3.1 release at 14:00 today?"
-- Cron job: "[SCHEDULED] DB Maintenance Lock — 13:00 to **14:30**"
-- Vendor: "Join our Integration Webinar" — marked `HIGH` priority
-
-The vendor message is a red herring. Its `HIGH` alert level is noise. The real signal
-is the cron job, which makes 14:00 impossible. The agent must respond to DevOps with
-**15:00**, route the DB alert to `operations`, and dismiss the vendor invite to
-`promotions` — all in the right order, reasoning across three conflicting signals.
-
-This is the real test. Most models fail it without GRPO-based self-improvement.
-
----
-
-## Architecture
+## 🏗️ Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    Client / Agent                            │
-│   inference.py → OpenAI API → LLM → parse action → HTTP     │
-└──────────────────────────┬───────────────────────────────────┘
-                           │  HTTP POST /reset, /step
-                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│  FastAPI OpenEnv Server  :8000                               │
-│  ├─ /reset  /step  /state  /health  /schema  /ws            │
-│  │                                                           │
-│  ├─ MessageRoutingEnvironment                                │
-│  │   ├─ DifficultyManager  (curriculum escalation)          │
-│  │   ├─ RewardEngine       (per-step dense rewards)         │
-│  │   └─ CompositeGrader    (programmatic + semantic)        │
-│  │                                                           │
-│  └─ Gradio UI  /ui                                          │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                     Client / Agent                        │
+│  inference.py → OpenAI API → LLM → parse action → HTTP  │
+└─────────────────────────┬────────────────────────────────┘
+                          │ HTTP POST /reset, /step, /state
+                          ▼
+┌──────────────────────────────────────────────────────────┐
+│                Docker Container (HF Space)                │
+│                                                          │
+│  ┌──────────────────────────────────────────────────┐    │
+│  │              FastAPI (server/app.py)              │    │
+│  │   /reset  /step  /state  /health  /schema  /ws   │    │
+│  └────────────────────┬─────────────────────────────┘    │
+│                       │                                   │
+│  ┌────────────────────▼─────────────────────────────┐    │
+│  │        MessageRoutingEnvironment                 │    │
+│  │        (OpenEnv Environment base class)          │    │
+│  │                                                  │    │
+│  │  ┌──────────┐ ┌──────────────┐ ┌─────────────┐  │    │
+│  │  │  Tasks   │ │ RewardEngine │ │   Graders   │  │    │
+│  │  │ Registry │ │ (per-step)   │ │ (0.0→1.0)   │  │    │
+│  │  └──────────┘ └──────────────┘ └─────────────┘  │    │
+│  └──────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────┘
 ```
 
-Full technical details → [ARCHITECTURE.md](ARCHITECTURE.md)
+### Component Diagram
 
----
+| Component | Responsibility |
+|-----------|---------------|
+| `message_routing_gym/constants.py` | All enums, config values, reward weights |
+| `message_routing_gym/models.py` | Typed Pydantic models (Action, Observation, State) |
+| `message_routing_gym/tasks.py` | Task definitions with ground-truth routing rules |
+| `message_routing_gym/rewards.py` | Dense reward computation with partial progress |
+| `message_routing_gym/graders.py` | Deterministic graders scoring 0.0→1.0 |
+| `server/message_routing_environment.py` | OpenEnv Environment with step()/reset()/state() |
+| `server/app.py` | FastAPI application wiring + custom Gradio mount |
+| `server/gradio_builder.py` | Custom Gradio UI with rich observation display |
+| `inference.py` | Baseline agent using OpenAI API |
 
-## Task Scenarios
+### Data Flow
 
-### Task 1 — Warmup: Noise Filter (Tier 1)
+```
+Agent                     Environment
+  │                           │
+  ├──── POST /reset ─────────►│  Load task, init RewardEngine
+  │◄──── observation ─────────┤  Queue + directive + curriculum tier
+  │                           │
+  ├──── POST /step ──────────►│  Parse action
+  │     {route_directory}     │  Compute reward via RewardEngine
+  │◄──── observation ─────────┤  Feedback + reward + done
+  │                           │
+  ├──── POST /step ──────────►│  Respond action
+  │     {respond, payload}    │  Semantic grader evaluates response
+  │◄──── observation ─────────┤  Feedback + reward
+  │                           │
+  ├──── POST /step ──────────►│  Dismiss action
+  │     {dismiss}             │  Route to vault, compute grade
+  │◄──── observation ─────────┤  Feedback + reward
+  │                           │
+  ├──── POST /step ──────────►│  Final action
+  │                           │  Compute final grader score
+  │◄──── observation ─────────┤  done=True + grader_score
+  │                           │
+```
+
+## 📐 Action & Observation Spaces
+
+### Action Space (MessageRoutingAction)
+
+| Field | Type | UI Widget | Required | Description |
+|-------|------|-----------|----------|-------------|
+| `action_type` | `"route_directory"` \| `"respond"` \| `"dismiss"` | Dropdown | ✅ | Action to perform |
+| `message_id` | string | Textbox | ✅ | Exact ID from the queue |
+| `target_directory` | `"promotions"` \| `"operations"` \| `"management"` \| `"vault"` | Dropdown | For route_directory | Destination folder |
+| `response_payload` | string | Textarea | For respond | Reply text to dispatch |
+| `reasoning` | string | Textarea | Optional | Chain-of-thought explanation |
+
+### Observation Space (MessageRoutingObservation)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `task_id` | string | Current task identifier |
+| `difficulty` | `"warmup"` \| `"intermediate"` \| `"advanced"` | Curriculum tier |
+| `queue` | list[Message] | Messages awaiting triage (id, source, topic, content, alert_level) |
+| `directories` | dict[str, int] | Count of messages in each folder |
+| `active_directive` | string | Current task goal the agent must resolve |
+| `step_feedback` | string | Feedback from last action |
+| `steps_remaining` | int | Steps left in episode |
+| `cumulative_reward` | float | Running reward total |
+| `action_history` | list[str] | Summary of actions taken |
+| `last_execution_error` | string | Error from last invalid action |
+
+## 📋 Tasks
+
+### Task 1 — Warmup: Noise Filter (task_warmup_noise)
 **1 decision type.** Sort low-signal promotional broadcasts from legitimate operational mail.
-
 - 4 messages: build alert, discount offer, CTO review, trial nag
-- No hints
-- Expected difficulty: straightforward for any capable LLM
+- Hint provided: `active_directive` explicitly names target directories
+- Expected difficulty: Straightforward for any capable LLM
 
-### Task 2 — Intermediate: Stakeholder Acknowledgment (Tier 2)
-**2 decision types.** Identify the high-priority management request and generate a
-professional acknowledgment response.
+### Task 2 — Intermediate: Stakeholder Acknowledgment (task_intermediate_ack)
+**2 decision types.** Identify the high-priority management request and generate a professional acknowledgment response.
+- 2 messages: automated metric digest + VP Engineering escalation
+- Semantic grader evaluates response quality (polite, conceptually correct)
+- Expected difficulty: Requires understanding of urgency and professional tone
 
-- 2 messages: automated metric digest + VP Engineering
-- Semantic grader evaluates response quality
-- Expected difficulty: requires polite, conceptually correct reply
+### Task 3 — Advanced: Conflict Scheduling (task_advanced_conflict)
+**3 conflicting signals.** Triage a deployment conflict while routing a mis-labelled red-herring invite.
+- 3 messages: DevOps request, DB maintenance cron alert, vendor invite marked HIGH
+- Agent must reason across all messages, respond with correct time (15:00 not 14:00)
+- Expected difficulty: Challenging without multi-step reasoning — most models fail without GRPO
 
-### Task 3 — Advanced: Conflict Scheduling (Tier 3)
-**3 conflicting signals.** Triage a deployment conflict while routing a mis-labelled
-red-herring invite.
+## 🎁 Reward Design
 
-- 3 messages with conflicting alert levels and timing dependencies
-- Agent must reason across all messages before responding
-- Expected difficulty: challenging without multi-step reasoning
+Rewards are dense and partial-progress — not binary end-of-episode:
 
----
+| Action | Correct | Incorrect |
+|--------|---------|-----------|
+| `route_directory` | +0.05 base + grade delta × 0.50 | −0.10 (bad directory) |
+| `respond` | +0.10 base + grade delta × 0.50 | — |
+| `dismiss` | +0.05 base + grade delta × 0.50 | — |
+| Bad message ID (hallucinated) | — | −0.20 |
+| Episode resolution (grade ≥ 0.99) | +1.5 × (1.0 + speed_ratio) | — |
+| Timeout floor | — | net reward wiped to −2.0 |
 
-## Reward Structure
+Max score per episode: ~5.0 (fast, perfect resolution)
 
-```
-Per-step signals
-  Route / dismiss:   +0.05 base
-  Respond:           +0.10 base
-  Grade delta:       grade_change × 0.50
-  Repeat penalty:    −0.15 per repeated action fingerprint
-  Bad message ID:    −0.20
-  Bad directory:     −0.10
+Grader normalisation: `score = clamp(cumulative_reward / max_reward, 0, 1)`
 
-Episode completion
-  Resolution bonus:  +1.5 × (1.0 + speed_ratio)  [grade ≥ 0.99]
-  Timeout floor:     net reward wiped to −2.0
+## 🚀 Setup & Usage
 
-GRPO variance:
-  Successful episodes: +2.0 to +5.0
-  Failed episodes:     −2.0
-```
+### Prerequisites
 
----
+- Python 3.10+
+- `pip` or `uv`
+- Docker (for containerised deployment)
 
-## Training Signal
-
-GRPO computes advantages across 8 parallel rollouts per batch. The reward variance
-between a successful resolution (+3.5) and a timed-out episode (−2.0) gives GRPO
-a clean signal to update the policy.
-
-Three things the agent learned purely from reward:
-
-1. **Match `alert_level` to directory** — LOW → promotions, CRITICAL → operations
-2. **Read content for context** — maintenance windows affect deployment scheduling
-3. **Respond before routing** — the VP needs an acknowledgment, not just file placement
-
----
-
-## Quick Start
-
-### Run the OpenEnv server locally
+### Environment Variables
 
 ```bash
-pip install -e .
-uvicorn server.app:app --host 0.0.0.0 --port 8000
-# API docs: http://localhost:8000/docs
-# Gradio UI: http://localhost:8000/ui
+# Copy the example and fill in your secrets
+cp .env.example .env
+
+# Edit .env — at minimum set:
+#   HF_TOKEN=hf_your_token_here
+#   OPENENV_URL=http://localhost:8000
 ```
 
-### Run inference against the live environment
+### Web Interface (Gradio UI)
+
+When deployed to Hugging Face Spaces (or run locally), the environment provides a custom Gradio web UI at `/ui` with:
+
+- 🔽 Dropdowns for `action_type` and `target_directory`
+- 📝 Textbox for `message_id` with queue display
+- 📄 Multi-line textarea for `response_payload` and `reasoning`
+- 📊 Live metric cards — reward, grade, curriculum tier, step count
+- 🖥️ Terminal-style action log with colour-coded rewards
+- 📬 Rich message queue cards with alert-level badges
+
+To enable locally:
 
 ```bash
-export OPENENV_URL=http://localhost:8000
-export HF_TOKEN=hf_xxx
-export MODEL_NAME=elizabeth07-m/email_gym
-python inference.py
+uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
+# Then open http://localhost:8000/ui
 ```
 
-### Use the Python client
-
-```python
-from client import MessageRoutingEnvClient
-from message_routing_gym import MessageRoutingAction
-
-with MessageRoutingEnvClient(base_url="http://localhost:8000") as client:
-    obs = client.reset()
-    print(obs.observation.active_directive)
-
-    result = client.step(MessageRoutingAction(
-        action_type="route_directory",
-        message_id="2",
-        target_directory="promotions",
-    ))
-    print(f"Reward: {result.reward:+.3f} | Grade: {result.info['grade']*100:.1f}%")
-```
-
-### Run tests
+### Local Development
 
 ```bash
+# Clone the repository
+git clone https://github.com/elizabeth07-m/email_gym.git
+cd email_gym
+
+# Install dependencies
+pip install -e ".[dev]"
+
+# Run the server
+uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
+
+# Run tests
 pytest tests/ -v
 ```
 
----
-
-## Training on GPU
+### Docker
 
 ```bash
-# Clone and install with training extras
-git clone https://github.com/elizabeth07-m/email_gym
-cd message-routing-gym
-pip install -e ".[train]"
+# Build and run
+docker compose up --build
 
-# Terminal 1: start environment server
+# Or manually
+docker build -t email-gym .
+docker run -p 8000:8000 email-gym
+```
+
+### API Usage Examples
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Reset (warmup task)
+curl -X POST http://localhost:8000/reset \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "task_warmup_noise"}'
+
+# Step (route a message)
+curl -X POST http://localhost:8000/step \
+  -H "Content-Type: application/json" \
+  -d '{"action": {"action_type": "route_directory", "message_id": "1", "target_directory": "promotions"}}'
+
+# Step (respond to stakeholder)
+curl -X POST http://localhost:8000/step \
+  -H "Content-Type: application/json" \
+  -d '{"action": {"action_type": "respond", "message_id": "2", "response_payload": "Acknowledged. The deployment window is confirmed for 15:00."}}'
+
+# Step (dismiss to vault)
+curl -X POST http://localhost:8000/step \
+  -H "Content-Type: application/json" \
+  -d '{"action": {"action_type": "dismiss", "message_id": "3"}}'
+
+# Get state
+curl http://localhost:8000/state
+
+# Get schemas
+curl http://localhost:8000/schema
+```
+
+### Running Inference
+
+```bash
+# Export environment variables
+export API_BASE_URL="https://router.huggingface.co/v1"
+export HF_TOKEN="your-token-here"
+export MODEL_NAME="elizabeth07-m/email_gym"
+export OPENENV_URL="http://localhost:8000"
+
+# Run baseline inference
+python inference.py
+```
+
+## 🚢 Deployment (OpenEnv Push)
+
+This environment is designed for one-command deployment to Hugging Face Spaces via the OpenEnv CLI.
+
+### Step 1 — Validate
+
+```bash
+openenv validate
+# [OK] email-gym: Ready for multi-mode deployment
+```
+
+### Step 2 — Test locally
+
+```bash
 uvicorn server.app:app --host 0.0.0.0 --port 8000
-
-# Terminal 2: run GRPO training
-export OPENENV_URL=http://localhost:8000
-export HF_TOKEN=hf_xxx
-export HF_REPO=your-name/message-router-agent-qwen3-0.6b
-export PUSH_TO_HUB=true
-python train.py
+# Server starts at http://localhost:8000
+# Verify: curl http://localhost:8000/health
 ```
 
----
+### Step 3 — Deploy to Hugging Face Spaces
 
-## Deployment on HF Spaces
+```bash
+# Login to Hugging Face (if not already)
+huggingface-cli login
 
-The environment is deployed as a Docker-based HF Space using OpenEnv v0.2.1:
-
-```dockerfile
-FROM ghcr.io/meta-pytorch/openenv-base:latest
-COPY . .
-RUN pip install -e .
-CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Push to your HF Space
+openenv push --repo-id elizabeth07-m/email_gym
 ```
 
-Configuration in `openenv.yaml`:
+This will:
+- Create the `elizabeth07-m/email_gym` Space on Hugging Face (if it doesn't exist)
+- Upload all environment files, Dockerfile, and `openenv.yaml`
+- Build and deploy the Docker container automatically on HF infrastructure
 
-```yaml
-spec_version: 1
-name: message_routing_gym
-type: space
-runtime: fastapi
-app: server.app:app
-port: 8000
+### Step 4 — Verify deployment
+
+```bash
+# Health check (replace with your Space URL)
+curl https://elizabeth07-m-email-gym.hf.space/health
+
+# Run inference against the deployed Space
+OPENENV_URL="https://elizabeth07-m-email-gym.hf.space" python inference.py
 ```
 
----
+### Deployment Options
 
-## Links
+```bash
+# Deploy as a private Space
+openenv push --repo-id elizabeth07-m/email_gym --private
+
+# Create a PR instead of pushing directly
+openenv push --repo-id elizabeth07-m/email_gym --create-pr
+```
+
+## 📊 Baseline Scores
+
+Scores are from the baseline inference agent using `Qwen/Qwen2.5-72B-Instruct`:
+
+| Task | Difficulty | Score | Steps |
+|------|------------|-------|-------|
+| task_warmup_noise | Warmup | ~0.82 | 4 |
+| task_intermediate_ack | Intermediate | ~0.51 | 6 |
+| task_advanced_conflict | Advanced | ~0.28 | 8 |
+| **Average** | | **~0.54** | |
+
+Scores are approximate and may vary based on model temperature and API availability.
+
+## 📁 Project Structure
+
+```
+email-gym/
+├── openenv.yaml                               # OpenEnv manifest
+├── pyproject.toml                             # Python package config
+├── Dockerfile                                 # OpenEnv-compatible build
+├── .env.example                               # Environment variable template
+├── .gitignore
+├── inference.py                               # Baseline inference script
+├── client.py                                  # OpenEnv EnvClient wrapper
+├── README.md                                  # This file
+│
+├── message_routing_gym/                       # Core library
+│   ├── __init__.py                            # Package exports
+│   ├── constants.py                           # Enums, config, reward weights
+│   ├── models.py                              # Pydantic Action/Observation/State
+│   ├── tasks.py                               # Task definitions + routing rules
+│   ├── rewards.py                             # Dense reward engine
+│   └── graders.py                             # Deterministic graders (0.0→1.0)
+│
+├── server/                                    # OpenEnv server
+│   ├── __init__.py
+│   ├── app.py                                 # FastAPI application
+│   ├── gradio_builder.py                      # Custom Gradio web UI
+│   └── message_routing_environment.py         # Environment implementation
+│
+└── tests/                                     # Test suite
+    ├── __init__.py
+    └── test_env.py                            # Unit + integration tests
+```
+
+## 🔗 Links
 
 | Resource | URL |
 |----------|-----|
-| HF Space (OpenEnv server) | https://huggingface.co/spaces/elizabeth07-m/email_gym |
-| Fine-tuned Model (Qwen3-0.6B) | https://huggingface.co/elizabeth07-m/email_gym |
-| OpenEnv Hackathon | https://www.scaler.com/school-of-technology/meta-pytorch-hackathon |
-
----
-
-## File Structure
-
-```
-message-routing-gym/
-├── message_routing_gym/         # Core Python package
-│   ├── constants.py             # Enums, reward constants
-│   ├── models.py                # Pydantic Action + Observation models
-│   ├── tasks.py                 # 3 task scenarios + registry
-│   ├── rewards.py               # RewardEngine (dense + shaped)
-│   └── graders.py               # Programmatic + Semantic + Composite
-├── server/                      # FastAPI OpenEnv server
-│   ├── app.py                   # /reset /step /state /health /ws
-│   ├── message_routing_environment.py  # Core env + DifficultyManager
-│   └── gradio_builder.py        # Premium Gradio dashboard  (/ui)
-├── tests/                       # Integration tests
-│   └── test_env.py
-├── client.py                    # HTTP client
-├── inference.py                 # LLM inference loop
-├── train.py                     # GRPO fine-tuning script
-├── pyproject.toml               # Full Python packaging
-├── openenv.yaml                 # OpenEnv v0.2.1 spec
-├── Dockerfile                   # openenv-base image + uvicorn
-└── ARCHITECTURE.md              # Full technical architecture
-```
+| HF Model / Space | https://huggingface.co/elizabeth07-m/email_gym |
+| GitHub Repository | https://github.com/elizabeth07-m/email_gym |
+| OpenEnv Hackathon | https://huggingface.co/openenv |
