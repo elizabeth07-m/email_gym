@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "message-routing-gym"
+version = "0.1.0"
+description = "OpenEnv-compliant RL environment for automated message triage and routing — trained with GRPO on Qwen3-0.6B"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["reinforcement-learning", "openenv", "llm", "grpo", "message-routing"]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.5",
+    "httpx>=0.27",
+    "openai>=1.12",
+    "gradio>=4.26",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "ruff>=0.4",
+]
+
+[project.urls]
+"Homepage"    = "https://github.com/elizabeth07-m/email_gym"
+"HF Space"    = "https://huggingface.co/spaces/elizabeth07-m/email_gym"
+"Fine-tuned Model" = "https://huggingface.co/elizabeth07-m/email_gym"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["message_routing_gym*", "server*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

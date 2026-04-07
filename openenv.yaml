@@ -1,0 +1,13 @@
+spec_version: 1
+name: message_routing_gym
+type: space
+runtime: fastapi
+app: server.app:app
+port: 8000
+description: >
+  An OpenEnv-compliant RL environment where agents learn to triage,
+  route, and respond to operational messages through adversarial curricula
+  and GRPO-based self-improvement. Built for the Meta × OpenEnv ×
+  HuggingFace × PyTorch Hackathon.
+action_model: message_routing_gym.models:MessageRoutingAction
+observation_model: message_routing_gym.models:MessageRoutingObservation
