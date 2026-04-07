@@ -277,7 +277,7 @@ def _terminal_html(logs: list[str]) -> str:
 # Gradio app builder
 # ---------------------------------------------------------------------------
 
-def build_gradio_app(env: MessageRoutingEnvironment):
+def build_gradio_app(env):
     from server.message_routing_environment import MessageRoutingEnvironment
     from message_routing_gym.models import MessageRoutingAction
     from message_routing_gym.constants import ActionType
