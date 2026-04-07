@@ -79,6 +79,12 @@ async def _broadcast(payload: dict):
 # OpenEnv endpoints
 # ---------------------------------------------------------------------------
 
+@app.get("/")
+async def root():
+    """Redirect root to the Gradio UI for Hugging Face Spaces."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/ui")
+
 @app.get("/health")
 async def health():
     """Liveness probe — required by OpenEnv / HF Spaces."""
