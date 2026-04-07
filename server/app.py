@@ -79,12 +79,6 @@ async def _broadcast(payload: dict):
 # OpenEnv endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/")
-async def root():
-    """Redirect root to the Gradio UI for Hugging Face Spaces."""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/ui")
-
 @app.get("/health")
 async def health():
     """Liveness probe — required by OpenEnv / HF Spaces."""
@@ -173,23 +167,21 @@ async def websocket_endpoint(ws: WebSocket):
 # Mount Gradio UI at /ui
 # ---------------------------------------------------------------------------
 
-def _mount_gradio():
-    try:
-        from server.gradio_builder import build_gradio_app
-        gradio_app = build_gradio_app(_env)
-
-        import gradio as gr
-        app.mount("/ui", gradio_app)
-        print("✅ Gradio UI mounted at /ui")
-    except ImportError as e:
-        print(f"⚠️  Gradio not available, UI skipped: {e}")
-    except Exception as e:
-        print(f"⚠️  Could not mount Gradio UI: {e}")
+try:
+    from server.gradio_builder import build_gradio_app
+    import gradio as gr
+    
+    gradio_app = build_gradio_app(_env)
+    app = gr.mount_gradio_app(app, gradio_app, path="/")
+    print("✅ Gradio UI mounted at /")
+except ImportError as e:
+    print(f"⚠️  Gradio not available, UI skipped: {e}")
+except Exception as e:
+    print(f"⚠️  Could not mount Gradio UI: {e}")
 
 
 @app.on_event("startup")
 async def startup_event():
-    _mount_gradio()
     print("🚀 Message Routing Gym server ready.")
     print("   API docs: http://localhost:8000/docs")
     print("   Gradio UI: http://localhost:8000/ui")
