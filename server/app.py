@@ -53,7 +53,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Singleton environment instance
+# Singleton environment instance.
 _env = MessageRoutingEnvironment()
 
 # Connected WebSocket clients (for live Gradio updates)
